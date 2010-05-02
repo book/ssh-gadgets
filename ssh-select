@@ -1,0 +1,16 @@
+#!/bin/sh
+TARGET_IP=$1
+TARGET_PORT=$2
+RELAY_HOST=$3
+RELAY_PORT=$4
+TARGET_KEY=$5
+
+# try to connect directly to the IP, and check the host key
+if ssh-keyscan -T 1 -p $TARGET_PORT $TARGET_IP 2>/dev/null | grep -q "$TARGET_KEY" ; then
+    # connect directly 
+    exec nc -w30 $TARGET_IP $TARGET_PORT
+else
+    # connect through the relay host
+    exec ssh $RELAY_HOST nc -w30 localhost $RELAY_PORT
+fi
+
