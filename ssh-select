@@ -1,16 +1,19 @@
-#!/bin/sh
-TARGET_IP=$1
-TARGET_PORT=$2
+#!/bin/bash
+DIRECT_IP=$1
+DIRECT_PORT=$2
 RELAY_HOST=$3
-RELAY_PORT=$4
-TARGET_KEY=$5
+RELAY_IP=$4
+RELAY_PORT=$5
+TARGET_KEY=$6
 
 # try to connect directly to the IP, and check the host key
-if ssh-keyscan -T 1 -p $TARGET_PORT $TARGET_IP 2>/dev/null | grep -q "$TARGET_KEY" ; then
-    # connect directly 
-    exec nc -w30 $TARGET_IP $TARGET_PORT
+if ssh-keyscan -4 -T 10 -p $DIRECT_PORT $DIRECT_IP 2>/dev/null | grep -q "$TARGET_KEY" ; then
+    # connect directly
+    exec nc -w 30 $DIRECT_IP $DIRECT_PORT
+elif [[ $RELAY_HOST == HTTP ]] ; then
+    # connect through a web proxy
+    exec connect -w 30 -H $RELAY_IP $DIRECT_IP $RELAY_PORT
 else
     # connect through the relay host
-    exec ssh $RELAY_HOST nc -w30 localhost $RELAY_PORT
+    exec ssh $RELAY_HOST nc -w30 $RELAY_IP $RELAY_PORT
 fi
-
