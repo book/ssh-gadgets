@@ -1,19 +1,230 @@
-#!/bin/bash
-DIRECT_IP=$1
-DIRECT_PORT=$2
-RELAY_HOST=$3
-RELAY_IP=$4
-RELAY_PORT=$5
-TARGET_KEY=$6
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use Getopt::Long;
+use Pod::Usage;
 
-# try to connect directly to the IP, and check the host key
-if ssh-keyscan -4 -T 10 -p $DIRECT_PORT $DIRECT_IP 2>/dev/null | grep -q "$TARGET_KEY" ; then
-    # connect directly
-    exec nc -w 30 $DIRECT_IP $DIRECT_PORT
-elif [[ $RELAY_HOST == HTTP ]] ; then
-    # connect through a web proxy
-    exec connect -w 30 -H $RELAY_IP $DIRECT_IP $RELAY_PORT
-else
-    # connect through the relay host
-    exec ssh $RELAY_HOST nc -w30 $RELAY_IP $RELAY_PORT
-fi
+my $self    = 'ssh-select';
+my $VERSION = '1.000';
+
+# connection attempters
+sub try_keyscan {
+    my %option = @_;
+    my @cmd    = qw( ssh-keyscan );
+    push @cmd, '-v' if $option{verbose} > 1;
+    push @cmd, '-T' => $option{timeout} if $option{timeout};
+    push @cmd, '-p', $option{port} if $option{port};
+    push @cmd, '-4', if $option{4};
+    push @cmd, '-6', if $option{6};
+
+    print STDERR "$self: keyscan: @cmd $option{host}\n" if $option{verbose};
+    chomp( my $key = `@cmd $option{host}` );
+
+    if ($key) {
+        print STDERR "$self: host key: $key\n" if $option{verbose};
+        ( undef, undef, $key ) = split / /, $key;
+    }
+    return $option{key}
+      ? $key eq $option{key}
+      : !!$key;
+}
+
+sub try_proxy {
+    my %option = @_;
+    my $class = $option{6} ? 'IO::Socket::INET6' : 'IO::Socket::INET';
+    eval "require $class;" or die $@;
+    my ( $host, $port ) = split /:/, $option{proxy};
+    $port ||= 8080;
+    print STDERR "$self: proxy: $host $port\n" if $option{verbose};
+    my $sock = $class->new(
+        PeerHost => $host,
+        PeerPort => $port,
+        ( Timeout => $option{timeout} )x!!$option{timeout},
+    );
+    return if !$sock;
+    print {$sock} << 'HTTP';
+HEAD http://www.google.com/ HTTP/1.0
+Host: www.google.com
+
+HTTP
+    my $response = <$sock>;
+    print STDERR "$self: proxy: $response" if $option{verbose};
+    my ( undef, $status, $message ) = split / /, $response, 3;
+    return $status =~ /^[23]/;    # assume failure for 4xx and 5xx
+}
+
+# command generator
+sub cmd_nc {
+    my %option = @_;
+    my @cmd    = ('nc');
+    push @cmd, '-w' => $option{timeout} if $option{timeout};
+    push @cmd, $option{host};
+    push @cmd, $option{port} || 22;
+    return @cmd;
+}
+
+# MAIN PROGRAM
+
+# command-line options
+my %option = (
+    verbose => 0,
+    timeout => 3,
+);
+GetOptions(
+    \%option,
+    'local=s',    # private hostname (local network)
+    'proxy=s',    # HTTP proxy (CONNECT)
+    'relay=s',    # ssh relay (nc)
+    'key=s',      # reference host key (for validation)
+    '4', '6',     # force IP version
+    'timeout=i',  # connect timeout
+    'verbose+',   # verbosity
+    'help', 'manual',    # documentation
+) or pod2usage( -verbose => 1, -exitval => 2, );
+
+# error checking
+pod2usage( -verbose => 1, -message => "-4 and -6 are mutually exclusive" )
+  if $option{4} && $option{6};
+
+# simple on-line help
+pod2usage( -verbose => 1 ) if $option{help};
+pod2usage( -verbose => 2 ) if $option{manual};
+
+my ( %local, %target );
+@local{qw( host port )} = split /:/, $option{local} if $option{local};
+@target{qw( host port )} = @ARGV;
+
+pod2usage( -verbose => 1, -message => "Remote host required" )
+  if !defined $target{host};
+
+my @cmd;
+
+print STDERR "$self: version $VERSION\n" if $option{verbose};
+
+# ssh-keyscan successful: direct connection to the local name
+if ( %local && try_keyscan( %option, %local ) ) {
+    @cmd = cmd_nc( %option, %local );
+}
+
+# ssh-keyscan successful: direct connection to the public name
+elsif ( try_keyscan( %option, %target ) ) {
+    @cmd = cmd_nc( %option, %target );
+}
+
+# proxy connection successful: use the proxy
+elsif ( $option{proxy} && try_proxy(%option) ) {
+    @cmd = ('connect');
+    push @cmd, '-d' if $option{verbose};
+    push @cmd, '-w' => $option{timeout} if $option{timeout};
+    push @cmd, '-H' => $option{proxy};
+    push @cmd, $target{host};
+    push @cmd, $target{port} || 22;
+}
+
+# ssh relay provided: run nc through it
+elsif ( $option{relay} ) {
+    my %relay;
+    @relay{qw( host port )} = split /:/, $option{relay};
+    @cmd = ('ssh');
+    push @cmd, ('-v') x ( $option{verbose} && $option{verbose} - 1 );
+    push @cmd, '-p', $relay{port} if $relay{port};
+    push @cmd, '-4' if $option{4};
+    push @cmd, '-6' if $option{6};
+    push @cmd, $relay{host};
+    push @cmd, cmd_nc( %option, %target );
+}
+else {
+    die "No suitable connection method found\n";
+}
+
+print STDERR "$self: command: @cmd\n" if $option{verbose};
+exec @cmd;
+
+__END__
+
+=head1 NAME
+
+ssh-select - Try different proxying techniques to SSH to a remote host
+
+=head1 SYNOPSIS
+
+    ssh-select [options] host [port]
+
+=head1 OPTIONS
+
+    --local   <host>[:<port>]    Local name for direct connections
+    --proxy   <host>[:<port>]    HTTP proxy (default port: 8080)
+    --relay   <host>[:<port>]    SSH relay (default port: 22)
+    --key     <ssh-key>          Host key (for validation)
+    --timeout <seconds>          Connection timeout in seconds (default: 3)
+
+    --verbose                  * Increase verbosity level
+
+    -4                           Use IPv4 (default)
+    -6                           Use IPv6
+
+    --help                       Print a short help summary and exit
+    --manual                     Print the full manual page and exit
+
+Options marked with * can be repeated as necessary.
+
+=head1 DESCRIPTION
+
+B<ssh-select> is a tool for transparently connecting to a SSH server
+from different network setups. It is meant to be used as C<ProxyCommand>
+in OpenSSH.
+
+The connection is attempted is three steps:
+
+=over 4
+
+=item *
+
+An C<ssh-keyscan> command is run against the target host.
+
+If the I<--local> option is given, the keyscan step is attempted twice:
+first against the "local" name, and then against the "public" name.
+(This allows using a local name inside a home network, and a public
+name outside.)
+
+If a key is returned, then a direct connection to the host is started
+(using C<nc>).
+
+When the I<--key> option is given, the SSH connection will only be run
+if the key returned by the host is identical.
+
+=item *
+
+If the I<--proxy> option is given, a connection to the given HTTP proxy
+is attempted (using a C<HEAD> request). If that request is successful,
+a tunnel is established through the proxy using the C<connect> command,
+to connect to the "public" name.
+
+=item *
+
+Finally, if the I<--relay> option is given, a SSH connection through the
+relay is tried, running the C<nc> command on the relay, to connect directly
+to the target server (using its "public" name).
+
+=cut
+
+If everything fails, the connection is aborted.
+
+=head1 EXAMPLE
+
+    Host home
+      Hostname home.example.com
+      ProxyCommand ssh-select --local mybox --proxy proxy.bigcorp.com:3128 --relay bastion.example.com %h %p
+
+=head1 AUTHOR
+
+Philippe Bruhat (BooK) <book@cpan.org>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright 2018 by Philippe Bruhat (BooK).
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut
