@@ -253,6 +253,19 @@ Sets the value for the I<--timeout> option.
 
 =back
 
+=head1 DIAGNOSTICS
+
+=over 4
+
+=item C<No suitable connection method found>
+
+All requested tunnels have been tried and none of them worked.
+
+The I<--debug> option may provide more details. One possibility is that
+the timeout is too short and all the connection attempts fail.
+
+=back
+
 =head1 SEE ALSO
 
 ssh(1), connect-proxy(1), nc(1).
