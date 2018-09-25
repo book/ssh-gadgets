@@ -78,7 +78,7 @@ GetOptions(
     '4', '6',     # force IP version
     'timeout=i',  # connect timeout
     'debug+',     # debug level
-    'help', 'manual',    # documentation
+    'help', 'manual', 'version',    # documentation
 ) or pod2usage( -verbose => 1, -exitval => 2, );
 
 # error checking
@@ -86,6 +86,7 @@ pod2usage( -verbose => 1, -message => "-4 and -6 are mutually exclusive" )
   if $option{4} && $option{6};
 
 # simple on-line help
+print "$self version $VERSION\n" and exit if $option{version};
 pod2usage( -verbose => 1 ) if $option{help};
 pod2usage( -verbose => 2 ) if $option{manual};
 
