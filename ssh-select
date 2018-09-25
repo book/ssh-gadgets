@@ -113,7 +113,7 @@ elsif ( try_keyscan( %option, %target ) ) {
 
 # proxy connection successful: use the proxy
 elsif ( $option{proxy} && try_proxy(%option) ) {
-    @cmd = ('connect');
+    @cmd = ('connect-proxy');
     push @cmd, '-d' if $option{verbose};
     push @cmd, '-w' => $option{timeout} if $option{timeout};
     push @cmd, '-H' => $option{proxy};
@@ -197,8 +197,8 @@ if the key returned by the host is identical.
 
 If the I<--proxy> option is given, a connection to the given HTTP proxy
 is attempted (using a C<HEAD> request). If that request is successful,
-a tunnel is established through the proxy using the C<connect> command,
-to connect to the "public" name.
+a tunnel is established through the proxy using the C<connect-proxy>
+command, to connect to the "public" name.
 
 =item *
 
@@ -215,6 +215,10 @@ If everything fails, the connection is aborted.
     Host home
       Hostname home.example.com
       ProxyCommand ssh-select --local mybox --proxy proxy.bigcorp.com:3128 --relay bastion.example.com %h %p
+
+=head1 SEE ALSO
+
+ssh(1), connect-proxy(1), nc(1).
 
 =head1 AUTHOR
 
