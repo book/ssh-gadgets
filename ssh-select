@@ -11,17 +11,17 @@ my $VERSION = '1.000';
 sub try_keyscan {
     my %option = @_;
     my @cmd    = qw( ssh-keyscan );
-    push @cmd, '-v' if $option{verbose} > 1;
+    push @cmd, '-v' if $option{debug} > 1;
     push @cmd, '-T' => $option{timeout} if $option{timeout};
     push @cmd, '-p', $option{port} if $option{port};
     push @cmd, '-4', if $option{4};
     push @cmd, '-6', if $option{6};
 
-    print STDERR "$self: keyscan: @cmd $option{host}\n" if $option{verbose};
+    print STDERR "$self: keyscan: @cmd $option{host}\n" if $option{debug};
     chomp( my @keys = `@cmd $option{host}` );
 
     for my $key (@keys) {
-        print STDERR "$self: host key: $key\n" if $option{verbose};
+        print STDERR "$self: host key: $key\n" if $option{debug};
         ( undef, undef, $key ) = split / /, $key;
     }
     return $option{key}
@@ -35,7 +35,7 @@ sub try_proxy {
     eval "require $class;" or die $@;
     my ( $host, $port ) = split /:/, $option{proxy};
     $port ||= 8080;
-    print STDERR "$self: proxy: $host $port\n" if $option{verbose};
+    print STDERR "$self: proxy: $host $port\n" if $option{debug};
     my $sock = $class->new(
         PeerHost => $host,
         PeerPort => $port,
@@ -48,7 +48,7 @@ Host: www.google.com
 
 HTTP
     my $response = <$sock>;
-    print STDERR "$self: proxy: $response" if $option{verbose};
+    print STDERR "$self: proxy: $response" if $option{debug};
     my ( undef, $status, $message ) = split / /, $response, 3;
     return $status =~ /^[23]/;    # assume failure for 4xx and 5xx
 }
@@ -66,7 +66,7 @@ sub cmd_nc {
 
 # command-line options
 my %option = (
-    verbose => 0,
+    debug => 0,
     timeout => 3,
 );
 GetOptions(
@@ -77,7 +77,7 @@ GetOptions(
     'key=s',      # reference host key (for validation)
     '4', '6',     # force IP version
     'timeout=i',  # connect timeout
-    'verbose+',   # verbosity
+    'debug+',     # debug level
     'help', 'manual',    # documentation
 ) or pod2usage( -verbose => 1, -exitval => 2, );
 
@@ -103,7 +103,7 @@ pod2usage( -verbose => 1, -message => "Remote host required" )
 
 my @cmd;
 
-print STDERR "$self: version $VERSION\n" if $option{verbose};
+print STDERR "$self: version $VERSION\n" if $option{debug};
 
 # ssh-keyscan successful: direct connection to the local name
 if ( %local && try_keyscan( %option, %local ) ) {
@@ -118,7 +118,7 @@ elsif ( try_keyscan( %option, %target ) ) {
 # proxy connection successful: use the proxy
 elsif ( $option{proxy} && try_proxy(%option) ) {
     @cmd = ('connect-proxy');
-    push @cmd, '-d' if $option{verbose};
+    push @cmd, '-d' if $option{debug};
     push @cmd, '-w' => $option{timeout} if $option{timeout};
     push @cmd, '-H' => $option{proxy};
     push @cmd, $target{host};
@@ -130,7 +130,7 @@ elsif ( $option{relay} ) {
     my %relay;
     @relay{qw( host port )} = split /:/, $option{relay};
     @cmd = ('ssh');
-    push @cmd, ('-v') x ( $option{verbose} && $option{verbose} - 1 );
+    push @cmd, ('-v') x ( $option{debug} && $option{debug} - 1 );
     push @cmd, '-p', $relay{port} if $relay{port};
     push @cmd, '-4' if $option{4};
     push @cmd, '-6' if $option{6};
@@ -141,7 +141,7 @@ else {
     die "No suitable connection method found\n";
 }
 
-print STDERR "$self: command: @cmd\n" if $option{verbose};
+print STDERR "$self: command: @cmd\n" if $option{debug};
 exec @cmd;
 
 __END__
@@ -162,7 +162,7 @@ ssh-select - Try different proxying techniques to SSH to a remote host
     --key     <ssh-key>          Host key (for validation)
     --timeout <seconds>          Connection timeout in seconds (default: 3)
 
-    --verbose                  * Increase verbosity level
+    --debug                    * Increase debug level
 
     -4                           Use IPv4 (default)
     -6                           Use IPv6
