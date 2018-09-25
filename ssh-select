@@ -102,6 +102,15 @@ if ( $option{local} ) {
 pod2usage( -verbose => 1, -message => "Remote host required" )
   if !defined $target{host};
 
+# environment variables
+$option{debug} = $ENV{SSH_SELECT_DEBUG} || 0
+  if exists $ENV{SSH_SELECT_DEBUG};
+$option{timeout} = $ENV{SSH_SELECT_TIMEOUT} || 0
+  if exists $ENV{SSH_SELECT_TIMEOUT};
+
+
+# TUNNEL SELECTION
+
 my @cmd;
 
 print STDERR "$self: version $VERSION\n" if $option{debug};
@@ -162,8 +171,10 @@ ssh-select - Try different proxying techniques to SSH to a remote host
     --relay   <host>[:<port>]    SSH relay (default port: 22)
     --key     <ssh-key>          Host key (for validation)
     --timeout <seconds>          Connection timeout in seconds (default: 3)
+                                 (SSH_SELECT_TIMEOUT environment variable)
 
     --debug                    * Increase debug level
+                                 (SSH_SELECT_DEBUG environment variable)
 
     -4                           Use IPv4 (default)
     -6                           Use IPv6
@@ -220,6 +231,27 @@ If everything fails, the connection is aborted.
     Host home
       Hostname home.example.com
       ProxyCommand ssh-select --local mybox --proxy proxy.bigcorp.com:3128 --relay bastion.example.com %h %p
+
+=head1 ENVIRONMENT
+
+The following environment variables override the options given on the
+command-line. This is useful for debugging, and easier than editing
+the C<ProxyCommand> line in F<~/.ssh/config>.
+
+=over 4
+
+=item C<SSH_SELECT_DEBUG>
+
+Sets the value for the I<--debug> option.
+
+For example, a value of C<2> is equivalent to passing C<-v -v> on the
+command-line.
+
+=item C<SSH_SELECT_TIMEOUT>
+
+Sets the value for the I<--timeout> option.
+
+=back
 
 =head1 SEE ALSO
 
