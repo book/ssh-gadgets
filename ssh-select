@@ -58,8 +58,7 @@ sub cmd_nc {
     my %option = @_;
     my @cmd    = ('nc');
     push @cmd, '-w' => $option{timeout} if $option{timeout};
-    push @cmd, $option{host};
-    push @cmd, $option{port} || 22;
+    push @cmd, $option{host}, $option{port};
     return @cmd;
 }
 
@@ -90,9 +89,14 @@ pod2usage( -verbose => 1, -message => "-4 and -6 are mutually exclusive" )
 pod2usage( -verbose => 1 ) if $option{help};
 pod2usage( -verbose => 2 ) if $option{manual};
 
+# target host and port
 my ( %local, %target );
-@local{qw( host port )} = split /:/, $option{local} if $option{local};
 @target{qw( host port )} = @ARGV;
+$target{port} ||= 22;
+if ( $option{local} ) {
+    @local{qw( host port )} = split /:/, $option{local};
+    $local{port} ||= $target{port};
+}
 
 pod2usage( -verbose => 1, -message => "Remote host required" )
   if !defined $target{host};
@@ -118,7 +122,7 @@ elsif ( $option{proxy} && try_proxy(%option) ) {
     push @cmd, '-w' => $option{timeout} if $option{timeout};
     push @cmd, '-H' => $option{proxy};
     push @cmd, $target{host};
-    push @cmd, $target{port} || 22;
+    push @cmd, $target{port};
 }
 
 # ssh relay provided: run nc through it
