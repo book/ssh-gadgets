@@ -226,11 +226,22 @@ to the target server (using its "public" name).
 
 If everything fails, the connection is aborted.
 
-=head1 EXAMPLE
+=head1 EXAMPLES
+
+Connect to a personal desktop using the local name on the home network,
+the public dynamic DNS name from the outside, and the company proxy
+from the company network.
 
     Host home
       Hostname home.example.com
-      ProxyCommand ssh-select --local mybox --proxy proxy.bigcorp.com:3128 --relay bastion.example.com %h %p
+      ProxyCommand ssh-select --local mybox --proxy proxy.bigcorp.com:3128
+
+Connect to a workstation directly from the company network, and via a bastion
+host from the outside network.
+
+    Host work
+      Hostname work.example.com
+      ProxyCommand ssh-select --relay bastion.example.com %h %p
 
 =head1 ENVIRONMENT
 
