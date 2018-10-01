@@ -229,7 +229,9 @@ If a key is returned, then a direct connection to the host is started
 (using C<nc>).
 
 When the I<--key> option is given, the SSH connection will only be run
-if the key returned by the host is identical.
+if the key returned by the host is identical. This is mostly useful when
+a server on one of the networks has the same address as the target, but
+is in fact a different machine.
 
 =item *
 
