@@ -62,18 +62,41 @@ sub cmd_nc {
     return @cmd;
 }
 
+sub cmd_proxy {
+    my %option = @_;
+    my @cmd = ( $option{connect} );
+    if ( $option{connect} eq 'socat' ) {
+        my ( $proxy, $port ) = split /:/, $option{proxy};
+        push @cmd, ('-d') x $option{debug};
+        push @cmd, "PROXY:$proxy:$option{host}:$option{port}";
+        $cmd[-1] .= ",proxyport=$port" if $port;
+        $cmd[-1] .= ",connect-timeout=$option{timeout}" if $option{timeout};
+        push @cmd, '-';
+    }
+    else {
+        push @cmd, '-d' if $option{debug};
+        push @cmd, '-w' => $option{timeout} if $option{timeout};
+        push @cmd, '-H' => $option{proxy};
+        push @cmd, $option{host};
+        push @cmd, $option{port};
+    }
+    return @cmd;
+}
+
 # MAIN PROGRAM
 
 # command-line options
 my %option = (
-    debug => 0,
+    debug   => 0,
     timeout => 3,
+    connect => 'connect-proxy',
 );
 GetOptions(
     \%option,
     'local=s',    # private hostname (local network)
     'proxy=s',    # HTTP proxy (CONNECT)
     'relay=s',    # ssh relay (nc)
+    'connect=s',  # CONNECT handler
     'key=s',      # reference host key (for validation)
     '4', '6',     # force IP version
     'timeout=i',  # connect timeout
@@ -127,12 +150,7 @@ elsif ( try_keyscan( %option, %target ) ) {
 
 # proxy connection successful: use the proxy
 elsif ( $option{proxy} && try_proxy(%option) ) {
-    @cmd = ('connect-proxy');
-    push @cmd, '-d' if $option{debug};
-    push @cmd, '-w' => $option{timeout} if $option{timeout};
-    push @cmd, '-H' => $option{proxy};
-    push @cmd, $target{host};
-    push @cmd, $target{port};
+    @cmd = cmd_proxy( %option, %target );
 }
 
 # ssh relay provided: run nc through it
@@ -169,6 +187,10 @@ ssh-select - Try different proxying techniques to SSH to a remote host
     --local   <host>[:<port>]    Local name for direct connections
     --proxy   <host>[:<port>]    HTTP proxy (default port: 8080)
     --relay   <host>[:<port>]    SSH relay (default port: 22)
+
+    --connect <command>          The command to use to CONNECT to the proxy
+                                 (default: connect-proxy)
+
     --key     <ssh-key>          Host key (for validation)
     --timeout <seconds>          Connection timeout in seconds (default: 3)
                                  (SSH_SELECT_TIMEOUT environment variable)
@@ -215,6 +237,10 @@ If the I<--proxy> option is given, a connection to the given HTTP proxy
 is attempted (using a C<HEAD> request). If that request is successful,
 a tunnel is established through the proxy using the C<connect-proxy>
 command, to connect to the "public" name.
+
+The I<--connect> option defines which external command to use to establish
+a connection through the HTTP proxy. The default is C<connect-proxy>.
+Supported values are: C<connect-proxy>, C<connect>, C<socat>.
 
 =item *
 
