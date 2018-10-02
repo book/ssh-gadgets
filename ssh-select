@@ -128,6 +128,9 @@ if ( $option{proxy} ) {
     ( $host, my $port ) = split /:/, $host;
     $proxy{proxy_host} = $host;
     $proxy{proxy_port} = $port if defined $port;
+    @proxy{qw( proxy_userinfo proxy_user proxy_pass )} =
+      ( $userinfo, split /:/, $userinfo )
+      if defined $userinfo;
 }
 
 pod2usage( -verbose => 1, -message => "Remote host required" )
