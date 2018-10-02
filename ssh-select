@@ -38,13 +38,12 @@ sub try_keyscan {
 
 sub try_proxy {
     my %option = @_;
-    my %proxy  = %{ $option{proxy} };
     my $class  = $option{6} ? 'IO::Socket::INET6' : 'IO::Socket::INET';
     eval "require $class;" or die $@;
-    my $port = $proxy{port} || 8080;
-    print STDERR "$self: proxy: $proxy{host} $port\n" if $option{debug};
+    my $port = $option{proxy_port} || 8080;
+    print STDERR "$self: proxy: $option{proxy_host} $port\n" if $option{debug};
     my $sock = $class->new(
-        PeerHost => $proxy{host},
+        PeerHost => $option{proxy_host},
         PeerPort => $port,
         ( Timeout => $option{timeout} )x!!$option{timeout},
     );
@@ -71,13 +70,12 @@ sub cmd_nc {
 
 sub cmd_proxy {
     my %option = @_;
-    my %proxy  = %{ $option{proxy} };
     my @cmd    = ( $option{connect} );
     if ( $option{connect} eq 'socat' ) {
         push @cmd, ('-d') x $option{debug};
-        push @cmd, "PROXY:$proxy{host}:$option{host}:$option{port}";
-        $cmd[-1] .= ",proxyport=$proxy{port}"           if $proxy{port};
-        $cmd[-1] .= ",connect-timeout=$option{timeout}" if $option{timeout};
+        push @cmd, "PROXY:$option{proxy_host}:$option{host}:$option{port}";
+        $cmd[-1] .= ",proxyport=$option{proxy_port}"     if $option{proxy_port};
+        $cmd[-1] .= ",connect-timeout=$option{timeout}"  if $option{timeout};
         push @cmd, '-';
     }
     else {
@@ -129,9 +127,11 @@ if ( $option{local} ) {
     $local{port} ||= $target{port};
 }
 if ( $option{proxy} ) {
-    my ( $host, $port ) = split /:/, $option{proxy};
-    $proxy{host} = $host;
-    $proxy{port} = $port if defined $port;
+    my ( $userinfo, $host ) = split /\@/, $option{proxy};
+    ( $host, $userinfo ) = ( $userinfo, $host ) if !defined $host;
+    ( $host, my $port ) = split /:/, $host;
+    $proxy{proxy_host} = $host;
+    $proxy{proxy_port} = $port if defined $port;
 }
 
 pod2usage( -verbose => 1, -message => "Remote host required" )
@@ -161,8 +161,8 @@ elsif ( try_keyscan( %option, %target ) ) {
 }
 
 # proxy connection successful: use the proxy
-elsif ( %proxy && try_proxy( %option, proxy => \%proxy ) ) {
-    @cmd = cmd_proxy( %option, %target, proxy => \%proxy );
+elsif ( %proxy && try_proxy( %option, %proxy ) ) {
+    @cmd = cmd_proxy( %option, %target, %proxy );
 }
 
 # ssh relay provided: run nc through it
