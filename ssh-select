@@ -262,7 +262,7 @@ from the company network.
 
     Host home
       Hostname home.example.com
-      ProxyCommand ssh-select --local mybox --proxy proxy.bigcorp.com:3128
+      ProxyCommand ssh-select --local mybox --proxy proxy.bigcorp.com:3128 %h %p
 
 Connect to a workstation directly from the company network, and via a bastion
 host from the outside network.
