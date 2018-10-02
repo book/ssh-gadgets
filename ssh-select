@@ -18,7 +18,14 @@ sub try_keyscan {
     push @cmd, '-6', if $option{6};
 
     print STDERR "$self: keyscan: @cmd $option{host}\n" if $option{debug};
+
+    # temporarily close STDERR, to hide ssh-keyscan's output
+    open( my $olderr, ">&STDERR" ) or die "Can't dup STDERR: $!";
+    close STDERR or die "Can't close STDERR: $!";
+
+    # run the ssh-keyscan command, and re-open STDERR
     chomp( my @keys = `@cmd $option{host}` );
+    open( STDERR, ">&", $olderr ) or die "Can't dup \$olderr: $!";
 
     for my $key (@keys) {
         print STDERR "$self: host key: $key\n" if $option{debug};
