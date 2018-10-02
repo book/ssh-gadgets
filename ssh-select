@@ -250,7 +250,7 @@ Finally, if the I<--relay> option is given, a SSH connection through the
 relay is tried, running the C<nc> command on the relay, to connect directly
 to the target server (using its "public" name).
 
-=cut
+=back
 
 If everything fails, the connection is aborted.
 
