@@ -31,13 +31,13 @@ sub try_keyscan {
 
 sub try_proxy {
     my %option = @_;
-    my $class = $option{6} ? 'IO::Socket::INET6' : 'IO::Socket::INET';
+    my %proxy  = %{ $option{proxy} };
+    my $class  = $option{6} ? 'IO::Socket::INET6' : 'IO::Socket::INET';
     eval "require $class;" or die $@;
-    my ( $host, $port ) = split /:/, $option{proxy};
-    $port ||= 8080;
-    print STDERR "$self: proxy: $host $port\n" if $option{debug};
+    my $port = $proxy{port} || 8080;
+    print STDERR "$self: proxy: $proxy{host} $port\n" if $option{debug};
     my $sock = $class->new(
-        PeerHost => $host,
+        PeerHost => $proxy{host},
         PeerPort => $port,
         ( Timeout => $option{timeout} )x!!$option{timeout},
     );
@@ -64,19 +64,19 @@ sub cmd_nc {
 
 sub cmd_proxy {
     my %option = @_;
-    my @cmd = ( $option{connect} );
+    my %proxy  = %{ $option{proxy} };
+    my @cmd    = ( $option{connect} );
     if ( $option{connect} eq 'socat' ) {
-        my ( $proxy, $port ) = split /:/, $option{proxy};
         push @cmd, ('-d') x $option{debug};
-        push @cmd, "PROXY:$proxy:$option{host}:$option{port}";
-        $cmd[-1] .= ",proxyport=$port" if $port;
+        push @cmd, "PROXY:$proxy{host}:$option{host}:$option{port}";
+        $cmd[-1] .= ",proxyport=$proxy{port}"           if $proxy{port};
         $cmd[-1] .= ",connect-timeout=$option{timeout}" if $option{timeout};
         push @cmd, '-';
     }
     else {
         push @cmd, '-d' if $option{debug};
         push @cmd, '-w' => $option{timeout} if $option{timeout};
-        push @cmd, '-H' => $option{proxy};
+        push @cmd, '-H' => $option{proxy};    # already in the right format
         push @cmd, $option{host};
         push @cmd, $option{port};
     }
@@ -113,13 +113,18 @@ print "$self version $VERSION\n" and exit if $option{version};
 pod2usage( -verbose => 1 ) if $option{help};
 pod2usage( -verbose => 2 ) if $option{manual};
 
-# target host and port
-my ( %local, %target );
+# compute various host and port information
+my ( %local, %target, %proxy );
 @target{qw( host port )} = @ARGV;
 $target{port} ||= 22;
 if ( $option{local} ) {
     @local{qw( host port )} = split /:/, $option{local};
     $local{port} ||= $target{port};
+}
+if ( $option{proxy} ) {
+    my ( $host, $port ) = split /:/, $option{proxy};
+    $proxy{host} = $host;
+    $proxy{port} = $port if defined $port;
 }
 
 pod2usage( -verbose => 1, -message => "Remote host required" )
@@ -149,8 +154,8 @@ elsif ( try_keyscan( %option, %target ) ) {
 }
 
 # proxy connection successful: use the proxy
-elsif ( $option{proxy} && try_proxy(%option) ) {
-    @cmd = cmd_proxy( %option, %target );
+elsif ( %proxy && try_proxy( %option, proxy => \%proxy ) ) {
+    @cmd = cmd_proxy( %option, %target, proxy => \%proxy );
 }
 
 # ssh relay provided: run nc through it
