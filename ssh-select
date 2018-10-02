@@ -340,7 +340,7 @@ the timeout is too short and all the connection attempts fail.
 
 =head1 SEE ALSO
 
-ssh(1), connect-proxy(1), nc(1).
+ssh(1), connect-proxy(1), socat(1), nc(1).
 
 =head1 AUTHOR
 
