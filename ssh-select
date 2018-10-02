@@ -71,13 +71,21 @@ sub cmd_proxy {
         push @cmd, ('-d') x $option{debug};
         push @cmd, "PROXY:$option{proxy_host}:$option{host}:$option{port}";
         $cmd[-1] .= ",proxyport=$option{proxy_port}"     if $option{proxy_port};
+        $cmd[-1] .= ",proxyauth=$option{proxy_userinfo}" if $option{proxy_userinfo};
         $cmd[-1] .= ",connect-timeout=$option{timeout}"  if $option{timeout};
         push @cmd, '-';
     }
     else {
+        my $proxy = $option{proxy_host};
+        $proxy .= ":$option{proxy_port}" if $option{proxy_port};
         push @cmd, '-d' if $option{debug};
         push @cmd, '-w' => $option{timeout} if $option{timeout};
-        push @cmd, '-H' => $option{proxy};    # already in the right format
+        push @cmd, '-H' => $proxy;
+        push @cmd, {
+            HTTP_PROXY_USER     => $option{proxy_user},
+            HTTP_PROXY_PASSWORD => $option{proxy_pass},
+          }
+          if $option{proxy_userinfo};
         push @cmd, $option{host};
         push @cmd, $option{port};
     }
@@ -180,6 +188,17 @@ else {
     die "No suitable connection method found\n";
 }
 
+# extract environment modifications
+my ($env) = grep ref eq 'HASH', @cmd;
+@cmd = grep !ref, @cmd;
+
+# update the environment if needed
+if ($env) {
+    print STDERR "$self: environment: @{ [ keys %$env ] }\n" if $option{debug};
+    @ENV{ keys %$env } = values %$env if $env;
+}
+
+# run the command
 print STDERR "$self: command: @cmd\n" if $option{debug};
 exec @cmd;
 
@@ -254,6 +273,9 @@ command, to connect to the "public" name.
 The I<--connect> option defines which external command to use to establish
 a connection through the HTTP proxy. The default is C<connect-proxy>.
 Supported values are: C<connect-proxy>, C<connect>, C<socat>.
+
+The I<--proxy> option is of the form: C<[user:password@]proxyhost[:proxyport]>.
+Basic authentication is supported by both C<connect-proxy> and C<socat>.
 
 =item *
 
