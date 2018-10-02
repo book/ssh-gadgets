@@ -38,25 +38,21 @@ sub try_keyscan {
 
 sub try_proxy {
     my %option = @_;
-    my $class  = $option{6} ? 'IO::Socket::INET6' : 'IO::Socket::INET';
-    eval "require $class;" or die $@;
-    my $port = $option{proxy_port} || 8080;
-    print STDERR "$self: proxy: $option{proxy_host} $port\n" if $option{debug};
-    my $sock = $class->new(
-        PeerHost => $option{proxy_host},
-        PeerPort => $port,
-        ( Timeout => $option{timeout} )x!!$option{timeout},
-    );
-    return if !$sock;
-    print {$sock} << 'HTTP';
-HEAD http://www.google.com/ HTTP/1.0
-Host: www.google.com
+    my $port   = $option{proxy_port} || 8080;
 
-HTTP
-    my $response = <$sock>;
-    print STDERR "$self: proxy: $response" if $option{debug};
-    my ( undef, $status, $message ) = split / /, $response, 3;
-    return $status =~ /^[23]/;    # assume failure for 4xx and 5xx
+    print STDERR "$self: proxy: $option{proxy_host} $port\n" if $option{debug};
+    require HTTP::Tiny;
+    my $response = HTTP::Tiny->new(
+        proxy   => "http://$option{proxy}",
+        timeout => $option{timeout},
+    )->head('http://www.google.com/');
+
+    if( $option{debug} ) {
+        print STDERR "$self: proxy: $response->{status} $response->{reason}\n";
+        print STDERR "$self: proxy: $response->{content}"
+          if $response->{status} eq '599';
+    }
+    return $response->{status} =~ /^[23]/;    # assume failure for 4xx and 5xx
 }
 
 # command generator
