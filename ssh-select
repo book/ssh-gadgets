@@ -60,6 +60,7 @@ sub cmd_nc {
     my %option = @_;
     my @cmd    = ('nc');
     push @cmd, '-w' => $option{timeout} if $option{timeout};
+    push @cmd, ('-v') x $option{debug} if $option{debug};
     push @cmd, $option{host}, $option{port};
     return @cmd;
 }
