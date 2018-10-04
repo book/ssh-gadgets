@@ -228,8 +228,8 @@ ssh-select - Try different proxying techniques to SSH to a remote host
     --debug                    * Increase debug level
                                  (SSH_SELECT_DEBUG environment variable)
 
-    -4                           Use IPv4 (default)
-    -6                           Use IPv6
+    -4                           Force IPv4
+    -6                           Force IPv6
 
     --help                       Print a short help summary and exit
     --manual                     Print the full manual page and exit
@@ -238,11 +238,13 @@ Options marked with * can be repeated as necessary.
 
 =head1 DESCRIPTION
 
-B<ssh-select> is a tool for transparently connecting to a SSH server
-from different network setups. It is meant to be used as C<ProxyCommand>
-in OpenSSH.
+B<ssh-select> is a tool for transparently connecting to a SSH server from
+different network setups. It is meant to be used as C<ProxyCommand> in
+OpenSSH, and L<exec> a command that reads should read from its standard
+input and write to its standard output.
 
-The connection is attempted is three steps:
+The connection is attempted in multiple steps, each being tried after
+the previous has failed:
 
 =over 4
 
