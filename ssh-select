@@ -65,6 +65,17 @@ sub cmd_nc {
     return @cmd;
 }
 
+sub cmd_socat {
+    my %option = @_;
+    my @cmd    = ('socat');
+    push @cmd, ('-d') x $option{debug};
+    push @cmd, '-';
+    my $tcp = $option{4} ? 'TCP4' : $option{6} ? 'TCP6' : 'TCP';
+    push @cmd, "$tcp:$option{host}:$option{port}";
+    $cmd[-1] .= ",connect-timeout=$option{timeout}"  if $option{timeout};
+    return @cmd;
+}
+
 sub cmd_proxy {
     my %option = @_;
     my @cmd    = ('socat');
@@ -142,12 +153,12 @@ print STDERR "$self: version $VERSION\n" if $option{debug};
 
 # ssh-keyscan successful: direct connection to the local name
 if ( %local && try_keyscan( %option, %local ) ) {
-    @cmd = cmd_nc( %option, %local );
+    @cmd = cmd_socat( %option, %local );
 }
 
 # ssh-keyscan successful: direct connection to the public name
 elsif ( try_keyscan( %option, %target ) ) {
-    @cmd = cmd_nc( %option, %target );
+    @cmd = cmd_socat( %option, %target );
 }
 
 # proxy connection successful: use the proxy
@@ -238,7 +249,7 @@ first against the "local" name, and then against the "public" name.
 name outside.)
 
 If a key is returned, then a direct connection to the host is started
-(using C<nc>).
+(using C<socat>).
 
 When the I<--key> option is given, the SSH connection will only be run
 if the key returned by the host is identical. This is mostly useful when
@@ -258,7 +269,8 @@ Basic authentication is supported by C<socat>.
 =item *
 
 Finally, if the I<--relay> option is given, a SSH connection through the
-relay is tried, running the C<nc> command on the relay, to connect directly
+relay is tried, running the C<nc> command on the relay (as C<nc> is
+assumed to be more widely installed than C<socat>), to connect directly
 to the target server (using its "public" name).
 
 =back
