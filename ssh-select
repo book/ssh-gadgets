@@ -3,6 +3,7 @@ use strict;
 use warnings;
 use Getopt::Long;
 use Pod::Usage;
+use IPC::Open2;
 
 my $self    = 'ssh-select';
 my $VERSION = '1.000';
@@ -55,6 +56,62 @@ sub try_http_proxy {
     return $response->{status} =~ /^[23]/;    # assume failure for 4xx and 5xx
 }
 
+sub expand_proxy_command {
+    my %option = @_;
+    my $cmd    = $option{proxy_command};
+
+    # SSH TOKENS:
+    # %%    A literal ‘%’.
+    # %C    Hash of %l%h%p%r.
+    # %d    Local user's home directory.
+    # %h    The remote hostname.
+    # %i    The local user ID.
+    # %L    The local hostname.
+    # %l    The local hostname, including the domain name.
+    # %n    The original remote hostname, as given on the command line.
+    # %p    The remote port.
+    # %r    The remote username.
+    # %T    The local tun(4) or tap(4) network interface assigned if tunnel forwarding was requested, or "NONE" otherwise.
+    # %u    The local username.
+    #
+    # only %h and %p are supported for now:
+    $cmd =~ s/%h/$option{host}/g;
+    $cmd =~ s/%p/$option{port}/g;
+    return $cmd;
+}
+
+sub try_proxy_command {
+    my %option = @_;
+    my $cmd = expand_proxy_command(%option);
+
+    my ( $pid, $out, $in );
+    print STDERR "$self: proxy-command: $cmd\n" if $option{debug};
+    eval {
+        local $SIG{ALRM} = sub { die "alarm\n" };    # NB: \n required
+        alarm $option{timeout};
+        open2( $out, $in, $cmd );
+        chomp( my $banner = <$out> // '' );
+        alarm 0;
+        print STDERR "$self: proxy-command: $banner\n" if $option{debug};
+        die "Not an SSH banner: $banner\n" if $banner !~ /^SSH-2\.[0-9]+/;
+        1;
+    } or do {
+        if ( $@ =~ /^open2: (.*)/ ) {
+            print STDERR "$self: proxy-command: $1\n" if $option{debug};
+        }
+        elsif ( $@ eq "alarm\n" ) {
+            print STDERR "$self: proxy-command: timed out\n" if $option{debug};
+        }
+        else {
+            my ($err) = split /\n/, $@;
+            print STDERR "$self: proxy-command: $err\n" if $option{debug};
+        }
+        return;
+    };
+
+    return 1;
+}
+
 # command generators
 sub cmd_nc {
     my %option = @_;
@@ -88,6 +145,11 @@ sub cmd_http_proxy {
     return @cmd;
 }
 
+sub cmd_proxy_command {
+    my %option = @_;
+    return expand_proxy_command(%option);
+}
+
 # MAIN PROGRAM
 
 # command-line options
@@ -97,14 +159,15 @@ my %option = (
 );
 GetOptions(
     \%option,
-    'local=s',                    # private hostname (local network)
-    'http_proxy|http-proxy=s',    # HTTP proxy (CONNECT)
-    'relay=s',                    # ssh relay (nc)
-    'key=s',                      # reference host key (for validation)
-    '4', '6',                     # force IP version
-    'timeout=i',                  # connect timeout
-    'debug+',                     # debug level
-    'help', 'manual', 'version',  # documentation
+    'local=s',                          # private hostname (local network)
+    'http_proxy|http-proxy=s',          # HTTP proxy (CONNECT)
+    'proxy_command|proxy-command=s',    # ssh ProxyCommand option
+    'relay=s',                          # ssh relay (nc)
+    'key=s',                            # reference host key (for validation)
+    '4', '6',                           # force IP version
+    'timeout=i',                        # connect timeout
+    'debug+',                           # debug level
+    'help', 'manual', 'version',        # documentation
 ) or pod2usage( -verbose => 1, -exitval => 2, );
 
 # error checking
@@ -166,6 +229,11 @@ elsif ( %proxy && try_http_proxy( %option, %proxy ) ) {
     @cmd = cmd_http_proxy( %option, %target, %proxy );
 }
 
+# ssh ProxyCommand
+elsif ( $option{proxy_command} && try_proxy_command( %option, %target ) ) {
+    @cmd = cmd_proxy_command( %option, %target );
+}
+
 # ssh relay provided: run nc through it
 elsif ( $option{relay} ) {
     my %relay;
@@ -208,22 +276,23 @@ ssh-select - Try different proxying techniques to SSH to a remote host
 
 =head1 OPTIONS
 
-    --local      <host>[:<port>]    Local name for direct connections
-    --http-proxy <host>[:<port>]    HTTP proxy (default port: 8080)
-    --relay      <host>[:<port>]    SSH relay (default port: 22)
+    --local         <host>[:<port>]    Local name for direct connections
+    --http-proxy    <host>[:<port>]    HTTP proxy (default port: 8080)
+    --proxy-command <cmd>              SSH ProxyCommand option
+    --relay         <host>[:<port>]    SSH relay (default port: 22)
 
-    --key        <ssh-key>          Host key (for validation)
-    --timeout    <seconds>          Connection timeout in seconds (default: 3)
-                                    (SSH_SELECT_TIMEOUT environment variable)
+    --key           <ssh-key>          Host key (for validation)
+    --timeout       <seconds>          Connection timeout in seconds (default: 3)
+                                       (SSH_SELECT_TIMEOUT environment variable)
 
-    --debug                       * Increase debug level
-                                    (SSH_SELECT_DEBUG environment variable)
+    --debug                          * Increase debug level
+                                       (SSH_SELECT_DEBUG environment variable)
 
-    -4                              Force IPv4
-    -6                              Force IPv6
+    -4                                 Force IPv4
+    -6                                 Force IPv6
 
-    --help                          Print a short help summary and exit
-    --manual                        Print the full manual page and exit
+    --help                             Print a short help summary and exit
+    --manual                           Print the full manual page and exit
 
 Options marked with * can be repeated as necessary.
 
@@ -269,10 +338,22 @@ Basic authentication is supported by C<socat>.
 
 =item *
 
+If the I<--proxy-command> option is given, it is run (just like the
+SSH C<ProxyCommand> option would be). If it returns a SSH-2 banner, it
+is assumed to work correctly, and the connection is established using
+that command.
+
+The proxy command will only expand the C<%h> and C<%p> SSH tokens.
+
+=item *
+
 Finally, if the I<--relay> option is given, a SSH connection through the
 relay is tried, running the C<nc> command on the relay (as C<nc> is
 assumed to be more widely installed than C<socat>), to connect directly
 to the target server (using its "public" name).
+
+This option is basically a specialized I<--proxy-command> that uses C<nc>
+over SSH.
 
 =back
 
@@ -282,18 +363,25 @@ If everything fails, the connection is aborted.
 
 Connect to a personal desktop using the local name on the home network,
 the public dynamic DNS name from the outside, and the company proxy
-from the company network.
+from the company network:
 
     Host home
       Hostname home.example.com
       ProxyCommand ssh-select --local mybox --http proxy.bigcorp.com:3128 %h %p
 
 Connect to a workstation directly from the company network, and via a bastion
-host from the outside network.
+host from the outside network:
 
     Host work
       Hostname work.example.com
       ProxyCommand ssh-select --relay bastion.example.com %h %p
+
+If the company bastion host runs its own proxy program, that takes into
+account the complexities of the network:
+
+    Host complicated
+      Hostname complicated.work.example.com
+      ProxyCommand ssh-select --proxy 'ssh bastion.example.com ssh-proxy %%h %%p' %h %p
 
 =head1 ENVIRONMENT
 
