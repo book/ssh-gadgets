@@ -256,16 +256,6 @@ else {
     die "No suitable connection method found\n";
 }
 
-# extract environment modifications
-my ($env) = grep ref eq 'HASH', @cmd;
-@cmd = grep !ref, @cmd;
-
-# update the environment if needed
-if ($env) {
-    print STDERR "$self: environment: @{ [ keys %$env ] }\n" if $option{debug};
-    @ENV{ keys %$env } = values %$env if $env;
-}
-
 # run the command
 print STDERR "$self: command: @cmd\n" if $option{debug};
 exec @cmd;
