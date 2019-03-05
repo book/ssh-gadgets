@@ -36,26 +36,26 @@ sub try_keyscan {
       : !!@keys;
 }
 
-sub try_proxy {
+sub try_http_proxy {
     my %option = @_;
-    my $port   = $option{proxy_port} || 8080;
+    my $port   = $option{http_proxy_port} || 8080;
 
-    print STDERR "$self: proxy: $option{proxy_host} $port\n" if $option{debug};
+    print STDERR "$self: http-proxy: $option{http_proxy_host} $port\n" if $option{debug};
     require HTTP::Tiny;
     my $response = HTTP::Tiny->new(
-        proxy   => "http://$option{proxy}",
+        proxy   => "http://$option{http_proxy}",
         timeout => $option{timeout},
     )->head('http://www.google.com/');
 
     if( $option{debug} ) {
-        print STDERR "$self: proxy: $response->{status} $response->{reason}\n";
-        print STDERR "$self: proxy: $response->{content}"
+        print STDERR "$self: http-proxy: $response->{status} $response->{reason}\n";
+        print STDERR "$self: http-proxy: $response->{content}"
           if $response->{status} eq '599';
     }
     return $response->{status} =~ /^[23]/;    # assume failure for 4xx and 5xx
 }
 
-# command generator
+# command generators
 sub cmd_nc {
     my %option = @_;
     my @cmd    = ('nc');
@@ -76,13 +76,13 @@ sub cmd_socat {
     return @cmd;
 }
 
-sub cmd_proxy {
+sub cmd_http_proxy {
     my %option = @_;
     my @cmd    = ('socat');
     push @cmd, ('-d') x $option{debug};
-    push @cmd, "PROXY:$option{proxy_host}:$option{host}:$option{port}";
-    $cmd[-1] .= ",proxyport=$option{proxy_port}"     if $option{proxy_port};
-    $cmd[-1] .= ",proxyauth=$option{proxy_userinfo}" if $option{proxy_userinfo};
+    push @cmd, "PROXY:$option{http_proxy_host}:$option{host}:$option{port}";
+    $cmd[-1] .= ",proxyport=$option{http_proxy_port}"     if $option{http_proxy_port};
+    $cmd[-1] .= ",proxyauth=$option{http_proxy_userinfo}" if $option{http_proxy_userinfo};
     $cmd[-1] .= ",connect-timeout=$option{timeout}"  if $option{timeout};
     push @cmd, '-';
     return @cmd;
@@ -97,14 +97,14 @@ my %option = (
 );
 GetOptions(
     \%option,
-    'local=s',    # private hostname (local network)
-    'proxy=s',    # HTTP proxy (CONNECT)
-    'relay=s',    # ssh relay (nc)
-    'key=s',      # reference host key (for validation)
-    '4', '6',     # force IP version
-    'timeout=i',  # connect timeout
-    'debug+',     # debug level
-    'help', 'manual', 'version',    # documentation
+    'local=s',                    # private hostname (local network)
+    'http_proxy|http-proxy=s',    # HTTP proxy (CONNECT)
+    'relay=s',                    # ssh relay (nc)
+    'key=s',                      # reference host key (for validation)
+    '4', '6',                     # force IP version
+    'timeout=i',                  # connect timeout
+    'debug+',                     # debug level
+    'help', 'manual', 'version',  # documentation
 ) or pod2usage( -verbose => 1, -exitval => 2, );
 
 # error checking
@@ -124,13 +124,13 @@ if ( $option{local} ) {
     @local{qw( host port )} = split /:/, $option{local};
     $local{port} ||= $target{port};
 }
-if ( $option{proxy} ) {
-    my ( $userinfo, $host ) = split /\@/, $option{proxy};
+if ( $option{http_proxy} ) {
+    my ( $userinfo, $host ) = split /\@/, $option{http_proxy};
     ( $host, $userinfo ) = ( $userinfo, $host ) if !defined $host;
     ( $host, my $port ) = split /:/, $host;
-    $proxy{proxy_host} = $host;
-    $proxy{proxy_port} = $port if defined $port;
-    @proxy{qw( proxy_userinfo proxy_user proxy_pass )} =
+    $proxy{http_proxy_host} = $host;
+    $proxy{http_proxy_port} = $port if defined $port;
+    @proxy{qw( http_proxy_userinfo http_proxy_user http_proxy_pass )} =
       ( $userinfo, split /:/, $userinfo )
       if defined $userinfo;
 }
@@ -162,8 +162,8 @@ elsif ( try_keyscan( %option, %target ) ) {
 }
 
 # proxy connection successful: use the proxy
-elsif ( %proxy && try_proxy( %option, %proxy ) ) {
-    @cmd = cmd_proxy( %option, %target, %proxy );
+elsif ( %proxy && try_http_proxy( %option, %proxy ) ) {
+    @cmd = cmd_http_proxy( %option, %target, %proxy );
 }
 
 # ssh relay provided: run nc through it
@@ -208,22 +208,22 @@ ssh-select - Try different proxying techniques to SSH to a remote host
 
 =head1 OPTIONS
 
-    --local   <host>[:<port>]    Local name for direct connections
-    --proxy   <host>[:<port>]    HTTP proxy (default port: 8080)
-    --relay   <host>[:<port>]    SSH relay (default port: 22)
+    --local      <host>[:<port>]    Local name for direct connections
+    --http-proxy <host>[:<port>]    HTTP proxy (default port: 8080)
+    --relay      <host>[:<port>]    SSH relay (default port: 22)
 
-    --key     <ssh-key>          Host key (for validation)
-    --timeout <seconds>          Connection timeout in seconds (default: 3)
-                                 (SSH_SELECT_TIMEOUT environment variable)
+    --key        <ssh-key>          Host key (for validation)
+    --timeout    <seconds>          Connection timeout in seconds (default: 3)
+                                    (SSH_SELECT_TIMEOUT environment variable)
 
-    --debug                    * Increase debug level
-                                 (SSH_SELECT_DEBUG environment variable)
+    --debug                       * Increase debug level
+                                    (SSH_SELECT_DEBUG environment variable)
 
-    -4                           Force IPv4
-    -6                           Force IPv6
+    -4                              Force IPv4
+    -6                              Force IPv6
 
-    --help                       Print a short help summary and exit
-    --manual                     Print the full manual page and exit
+    --help                          Print a short help summary and exit
+    --manual                        Print the full manual page and exit
 
 Options marked with * can be repeated as necessary.
 
@@ -258,12 +258,13 @@ is in fact a different machine.
 
 =item *
 
-If the I<--proxy> option is given, a connection to the given HTTP proxy
-is attempted (using a C<HEAD> request). If that request is successful,
-a tunnel is established through the proxy using the C<socat>
+If the I<--http-proxy> option is given, a connection to the given
+HTTP proxy is attempted (using a C<HEAD> request). If that request is
+successful, a tunnel is established through the proxy using the C<socat>
 command, to connect to the "public" name.
 
-The I<--proxy> option is of the form: C<[user:password@]proxyhost[:proxyport]>.
+The I<--http-proxy> option value is of the form:
+C<[user:password@]proxyhost[:proxyport]>.
 Basic authentication is supported by C<socat>.
 
 =item *
@@ -285,7 +286,7 @@ from the company network.
 
     Host home
       Hostname home.example.com
-      ProxyCommand ssh-select --local mybox --proxy proxy.bigcorp.com:3128 %h %p
+      ProxyCommand ssh-select --local mybox --http proxy.bigcorp.com:3128 %h %p
 
 Connect to a workstation directly from the company network, and via a bastion
 host from the outside network.
