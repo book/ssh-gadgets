@@ -150,6 +150,19 @@ sub cmd_proxy_command {
     return expand_proxy_command(%option);
 }
 
+sub cmd_relay {
+    my %option = @_;
+    my %relay;
+    @relay{qw( host port )} = split /:/, $option{relay};
+    my @cmd = ('ssh');
+    push @cmd, ('-v') x ( $option{debug} && $option{debug} - 1 );
+    push @cmd, '-p', $relay{port} if $relay{port};
+    push @cmd, '-4' if $option{4};
+    push @cmd, '-6' if $option{6};
+    push @cmd, $relay{host};
+    return @cmd;
+}
+
 # MAIN PROGRAM
 
 # command-line options
@@ -236,16 +249,9 @@ elsif ( $option{proxy_command} && try_proxy_command( %option, %target ) ) {
 
 # ssh relay provided: run nc through it
 elsif ( $option{relay} ) {
-    my %relay;
-    @relay{qw( host port )} = split /:/, $option{relay};
-    @cmd = ('ssh');
-    push @cmd, ('-v') x ( $option{debug} && $option{debug} - 1 );
-    push @cmd, '-p', $relay{port} if $relay{port};
-    push @cmd, '-4' if $option{4};
-    push @cmd, '-6' if $option{6};
-    push @cmd, $relay{host};
-    push @cmd, cmd_nc( %option, %target );
+    @cmd = ( cmd_relay(%option), cmd_nc( %option, %target ) );
 }
+
 else {
     die "No suitable connection method found\n";
 }
